@@ -1,89 +1,125 @@
-import React, { Component } from "react";
+import React, { useState, useEffect } from "react";
 import ItemManagerContract from "./contracts/ItemManager.json";
 import ItemContract from "./contracts/Item.json";
-import getWeb3 from "./getWeb3";
+import Web3 from "web3";
 
 import "./App.css";
 
-class App extends Component {
-  state = { loaded: true, cost: 0, itemName: "example" };
+const App = () => {
+  const [inputs, setInputs] = useState({ itemName: "", cost: 0 });
+  const [loading, setLoading] = useState(false);
+  const [itemManagerCon, setItemManagerCon] = useState({});
+  const [userAccounts, setUserAccounts] = useState([]);
+  // const [ ]
+  let currentAccount;
+  const { ethereum } = window;
 
-  componentDidMount = async () => {
-    try {
-      // Get network provider and web3 instance.
-      this.web3 = await getWeb3();
-
-      // Use web3 to get the user's accounts.
-      this.accounts = await this.web3.eth.getAccounts();
-
-      // Get the contract instance.
-      this.networkId = await this.web3.eth.net.getId();
-      this.itemManager = new this.web3.eth.Contract(
-        ItemManagerContract.abi,
-        ItemManagerContract.networks[this.networkId] &&
-          ItemManagerContract.networks[this.networkId].address
-      );
-
-      this.item = new this.web3.eth.Contract(
-        ItemContract.abi,
-        ItemContract.networks[this.networkId] &&
-          ItemContract.networks[this.networkId].address
-      );
-
-      // Set web3, accounts, and contract to the state, and then proceed with an
-      // example of interacting with the contract's methods.
-    } catch (error) {
-      // Catch any errors for any of the above operations.
-      alert(
-        `Failed to load web3, accounts, or contract. Check console for details.`
-      );
-      console.error(error);
-    }
-  };
-
-  handleInputChange = (event) => {
-    const target = event.target;
-    const value = target.type == "checkbox" ? target.checked : target.value;
-    const name = target.name;
-    this.setState({
-      [name]: value,
-    });
-  };
-
-  handleSubmit = async () => {
-    const { cost, itemName } = this.state;
-    await this.itemManager.methods
-      .createItem(itemName, cost)
-      .send({ from: this.accounts[0] });
-  };
-
-  render() {
-    if (!this.state.loaded) {
-      return <div>Loading Web3, accounts, and contract...</div>;
-    }
-    return (
-      <div className="App">
-        <h1>Supply Chain</h1>
-        <h2>Items</h2>
-        <h2>Add Items</h2>
-        cost in wei :{" "}
-        <input
-          type="text"
-          name="cost"
-          value={this.state.cost}
-          onChange={this.handleInputChange}
-        />
-        Items identifier :{" "}
-        <input
-          type="text"
-          name="itemName"
-          value={this.state.itemName}
-          onChange={this.handleSubmit}
-        />
-        <button type="button" onClick={this.handleSubmit}>Submit</button>
-      </div>
-    );
+  if (!ethereum) {
+    alert("Please install metamask.");
   }
-}
+
+  const handleInputChange = (event) => {
+    event.preventDefault();
+    const target = event.target;
+    const value = target.value;
+    const name = target.name;
+    setInputs((prevState) => ({ ...prevState, [name]: value }));
+
+    console.log(inputs);
+  };
+
+  const loadApp = async () => {
+    await ethereum.enable();
+    let web3 = new Web3(Web3.givenProvider || "http://localhost:3000");
+    let provider = ethereum;
+    if (typeof provider !== "undefined") {
+      provider
+        .request({ method: "eth_requestAccounts" })
+        .then((accounts) => {
+          currentAccount = accounts[0];
+          console.log(`selected account is ${currentAccount}`);
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+      window.ethereum.on("accountsChanged", function (accounts) {
+        currentAccount = accounts[0];
+        console.log(`Selected account changed to ${currentAccount}`);
+      });
+    }
+
+    const accounts = await web3.eth.getAccounts();
+    setUserAccounts(accounts);
+    const networkId = await web3.eth.net.getId();
+
+    const itemManager = new web3.eth.Contract(
+      ItemManagerContract.abi,
+      ItemManagerContract.networks[networkId] &&
+        ItemManagerContract.networks[networkId].address
+    );
+    setItemManagerCon(itemManager);
+
+    const item = new web3.eth.Contract(
+      ItemContract.abi,
+      ItemContract.networks[networkId] &&
+        ItemContract.networks[networkId].address
+    );
+    // listenToPaymentEvent();
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    loadApp();
+    setLoading(false);
+  }, []);
+
+  const handleSubmit = async () => {
+    const { itemName, cost } = inputs;
+    let result = await itemManagerCon.methods
+      .createItem(itemName, cost)
+      .send({ from: userAccounts[0] });
+    console.log(result);
+  };
+
+  // const listenToPaymentEvent = () => {
+  //   itemManagerCon.events.SupplyChainStep().on("data", async (evt)=> {
+  //     if (evt.returnValues._step == 1) {
+  //       let item = await itemManagerCon.methods
+  //         .items(evt.returnValues._itemIndex)
+  //         .call();
+  //       console.log(item);
+  //       alert("Item " + item._identifier + " was paid, deliver it now!");
+  //     }
+  //     console.log(evt);
+  //   });
+  // };
+
+  return (
+    <div className="App">
+      <h1>Supply Chain</h1>
+      <h2>Items</h2>
+      <h2>Add Items</h2>
+      cost in wei :{" "}
+      <input
+        type="text"
+        name="cost"
+        value={inputs.cost}
+        onChange={handleInputChange}
+      />
+      Items identifier :{" "}
+      <input
+        type="text"
+        name="itemName"
+        value={inputs.itemName}
+        onChange={handleInputChange}
+      />
+      {!loading ? (
+        <button type="button" onClick={handleSubmit}>
+          Submit
+        </button>
+      ) : null}
+    </div>
+  );
+};
 
 export default App;
